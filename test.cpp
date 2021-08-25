@@ -191,8 +191,20 @@ int main()
     auto StagingDesc = CD3DX12_RESOURCE_DESC::Buffer(65536);
     auto StagingHeapDesc = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
 
-    VERIFY_SUCCEEDED(spDevice->CreateCommittedResource(&UAVHeapDesc, D3D12_HEAP_FLAG_NONE, &UAVDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&spUAV)));
+    VERIFY_SUCCEEDED(spDevice->CreateCommittedResource(&UAVHeapDesc, D3D12_HEAP_FLAG_SHARED, &UAVDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&spUAV)));
     VERIFY_SUCCEEDED(spDevice->CreateCommittedResource(&StagingHeapDesc, D3D12_HEAP_FLAG_NONE, &StagingDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&spStaging)));
+
+    HANDLE hRawSharedHandle;
+    VERIFY_SUCCEEDED(spDevice->CreateSharedHandle(spUAV.Get(), nullptr, 0x10000000L, nullptr, &hRawSharedHandle));
+
+    ComPtr<ID3D12Resource> spUAV2, spUAV3;
+    VERIFY_SUCCEEDED(spDevice->OpenSharedHandle(hRawSharedHandle, IID_PPV_ARGS(&spUAV2)));
+    VERIFY_SUCCEEDED(spDevice->OpenSharedHandle(hRawSharedHandle, IID_PPV_ARGS(&spUAV3)));
+#ifdef _WIN32
+    CloseHandle(hRawSharedHandle);
+#else
+    close((int)(intptr_t)hRawSharedHandle);
+#endif
 
     ComPtr<ID3D12RootSignature> spRootSig;
     VERIFY_SUCCEEDED(spDevice->CreateRootSignature(0, g_cs, sizeof(g_cs), IID_PPV_ARGS(&spRootSig)));
@@ -212,7 +224,11 @@ int main()
     spCommandList->SetComputeRootUnorderedAccessView(0, spUAV->GetGPUVirtualAddress());
     spCommandList->SetPipelineState(spPSO.Get());
     spCommandList->Dispatch(1, 1, 1);
-    spCommandList->CopyResource(spStaging.Get(), spUAV.Get());
+
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(spUAV.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    spCommandList->ResourceBarrier(1, &barrier);
+
+    spCommandList->CopyResource(spStaging.Get(), spUAV2.Get());
     VERIFY_SUCCEEDED(spCommandList->Close());
 
     ComPtr<ID3D12CommandQueue> spQueue;
