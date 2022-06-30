@@ -14,7 +14,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(DirectX-Headers)
 
-add_executable(d3d12test test.cpp)
+add_executable(d3d12test test.c test_cpp.cpp)
 target_link_libraries(d3d12test Microsoft::DirectX-Headers Microsoft::DirectX-Guids)
 
 if (NOT WIN32)
